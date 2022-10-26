@@ -1,0 +1,77 @@
+name: 'artifactory-upload-terraform-module'
+
+description: 'Upload a Terraform module from GitHub to Artifactory'
+
+inputs:
+  module-github-token:
+    description: 'GitHub token of module (i.e. GitHub repository) that we want to download'
+    required: true
+  module-github-repository:
+    description: 'GitHub repository that we want to upload'
+    required: true
+  artifactory-registry:
+    description: 'URL of Artifactory registry that will store the uploaded Terraform modules'
+    default: 'mjheitland.jfrog.io'
+  artifactory-user:
+    description: 'User login for Artifactory'
+    required: true
+  artifactory-password:
+    description: 'Password for Artifactory'
+    required: true
+
+runs:
+  using: "composite"
+
+  steps:
+
+    - id: download-terraform-module-from-github
+      uses: actions/checkout@v3
+      with:
+        repository: ${{ inputs.module-github-repository }}
+        token: ${{ inputs.module-github-token }}
+
+    - id: zip-module
+      shell: bash
+      run: |
+        echo ${{ inputs.module-github-repository }}
+        pwd
+        zip -r module.zip *
+        ls -l
+
+    - id: upload-terraform-module-to-artifactory
+      shell: bash
+      run: |
+        # construct trg_path="https://mjheitland.jfrog.io/artifactory/mjheitland/terraform/vpc/aws/<VERSION>.zip"
+
+        registry=${{ inputs.artifactory-registry }}
+        echo $registry
+
+        items=(${GITHUB_REPOSITORY//\// })
+        owner=${items[0]}
+        repo=${items[1]}
+        items=(${repo//-/ })
+        namespace=${items[0]}
+        provider=${items[1]}
+        module=${items[2]}
+
+        src_path="module.zip"
+
+        trg_path="https://"
+        trg_path+=$registry
+        trg_path+="/"
+        trg_path+="artifactory"
+        trg_path+="/"
+        trg_path+=$owner
+        trg_path+="/"
+        trg_path+=$namespace
+        trg_path+="/"
+        trg_path+=$module
+        trg_path+="/"
+        trg_path+=$provider
+        trg_path+="/"
+        trg_path+="${{ github.event.release.tag_name }}"
+        trg_path+=".zip"
+
+        echo "trg_path=$trg_path"
+
+        curl -u${{ inputs.artifactory-user }}:${{ inputs.artifactory-password }} -T $src_path -XPUT $trg_path
